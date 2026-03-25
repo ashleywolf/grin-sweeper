@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grin Sweeper</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  user-select: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+#top-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 40px;
+  padding: 10px 20px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  min-height: 48px;
+  z-index: 10;
+}
+
+#top-bar .stat {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+#top-bar .stat span { color: #58a6ff; }
+#top-bar .lives span { color: #f85149; }
+
+#main-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+#game-canvas-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+#gameCanvas {
+  cursor: crosshair;
+}
+
+#sidebar {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  gap: 12px;
+  background: #161b22;
+  border-left: 1px solid #30363d;
+}
+
+#webcam-container {
+  position: relative;
+  width: 196px;
+  height: 147px;
+  border: 2px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+#webcam {
+  width: 196px;
+  height: 147px;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+#webcam-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+
+#smile-meter-wrap {
+  width: 196px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#smile-meter-wrap label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #8b949e;
+}
+
+#smile-meter-outer {
+  width: 100%;
+  height: 20px;
+  background: #21262d;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+}
+
+#smile-meter-inner {
+  height: 100%;
+  width: 0%;
+  border-radius: 10px;
+  transition: width 0.08s linear, background 0.15s linear;
+  background: #f0c040;
+}
+
+#smile-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #39d353;
+  min-height: 20px;
+  text-align: center;
+}
+
+#trophy-count {
+  margin-top: auto;
+  font-size: 14px;
+  color: #8b949e;
+  text-align: center;
+  padding-bottom: 8px;
+}
+
+#trophy-count span { color: #f85149; font-weight: 700; font-size: 18px; }
+
+/* Overlays */
+.overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(13, 17, 23, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.overlay.hidden { display: none; }
+
+.overlay h1 {
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+}
+
+.overlay h1 .grin { color: #39d353; }
+.overlay h1 .sweep { color: #f85149; }
+
+.overlay p {
+  font-size: 16px;
+  color: #8b949e;
+  max-width: 500px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.overlay .instructions {
+  margin: 16px 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.overlay .instructions li { margin: 4px 0; }
+
+.overlay button {
+  margin-top: 20px;
+  padding: 14px 36px;
+  font-size: 18px;
+  font-weight: 700;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+.overlay button:hover { background: #2ea043; }
+
+#countdown {
+  font-size: 120px;
+  font-weight: 900;
+  color: #39d353;
+  text-shadow: 0 0 40px #39d35388;
+}
+
+#calibration-text {
+  font-size: 28px;
+  font-weight: 700;
+  color: #58a6ff;
+  text-align: center;
+  line-height: 1.5;
+}
+
+#calibration-progress {
+  width: 300px;
+  height: 8px;
+  background: #21262d;
+  border-radius: 4px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+#calibration-progress-inner {
+  height: 100%;
+  width: 0%;
+  background: #39d353;
+  border-radius: 4px;
+  transition: width 0.1s linear;
+}
+
+/* Game over */
+#gameover-content {
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+#gameover-content h1 { margin-bottom: 4px; }
+
+#final-score {
+  font-size: 22px;
+  color: #58a6ff;
+  font-weight: 700;
+  margin: 8px 0 16px;
+}
+
+#trophy-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  margin: 16px 0;
+  max-width: 700px;
+}
+
+.trophy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #161b22;
+  border: 2px solid #f85149;
+  border-radius: 10px;
+  padding: 8px;
+  width: 200px;
+}
+
+.trophy-card img {
+  width: 180px;
+  height: 135px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+}
+
+.trophy-card .caption {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f85149;
+  text-align: center;
+}
+
+/* Mega grin flash */
+#mega-flash {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 48px;
+  font-weight: 900;
+  color: #39d353;
+  text-shadow: 0 0 30px #39d353, 0 0 60px #39d35366;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 50;
+  transition: opacity 0.15s;
+  letter-spacing: 4px;
+}
+
+#mine-flash {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(248, 81, 73, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 49;
+  transition: opacity 0.1s;
+}
+
+/* Denied message */
+#denied {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #0d1117;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+#denied.hidden { display: none; }
+#denied h2 { color: #f85149; margin-bottom: 12px; }
+#denied p { color: #8b949e; max-width: 400px; text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div id="denied" class="hidden">
+  <h2>Camera Access Denied</h2>
+  <p>Grin Sweeper needs your webcam to detect smiles. Reload and allow camera access to play.</p>
+</div>
+
+<div id="app" class="hidden">
+  <div id="top-bar">
+    <div class="stat">SCORE: <span id="score-val">0</span></div>
+    <div class="stat lives">LIVES: <span id="lives-val">3</span></div>
+    <div class="stat">TIME: <span id="timer-val">0:00</span></div>
+  </div>
+
+  <div id="main-area">
+    <div id="game-canvas-wrap">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="sidebar">
+      <div id="webcam-container">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="webcam-overlay"></canvas>
+      </div>
+
+      <div id="smile-meter-wrap">
+        <label>Smile Intensity</label>
+        <div id="smile-meter-outer">
+          <div id="smile-meter-inner"></div>
+        </div>
+        <div id="smile-label"></div>
+      </div>
+
+      <div id="trophy-count">
+        Shame Trophies: <span id="trophy-num">0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Overlays -->
+<div id="overlay-start" class="overlay hidden">
+  <h1><span class="grin">GRIN</span> <span class="sweep">SWEEPER</span></h1>
+  <p>Minesweeper, but you reveal tiles by smiling at the camera.</p>
+  <ul class="instructions">
+    <li>Hover your mouse over a tile to target it</li>
+    <li>Smile to reveal tiles. Bigger grin = bigger reveal area</li>
+    <li>Right-click to flag suspected mines</li>
+    <li>Hit a mine? We screenshot your face. No mercy.</li>
+    <li>3 lives. Clear the board to win.</li>
+  </ul>
+  <button id="btn-start">START GAME</button>
+</div>
+
+<div id="overlay-calibrate" class="overlay hidden">
+  <div id="webcam-cal-wrap" style="width:320px;height:240px;border:2px solid #30363d;border-radius:10px;overflow:hidden;margin-bottom:20px;background:#000;">
+    <video id="webcam-cal" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+  </div>
+  <div id="calibration-text">Look at the camera with a neutral face...</div>
+  <div id="calibration-progress"><div id="calibration-progress-inner"></div></div>
+</div>
+
+<div id="overlay-countdown" class="overlay hidden">
+  <div id="countdown">3</div>
+</div>
+
+<div id="overlay-gameover" class="overlay hidden">
+  <div id="gameover-content">
+    <h1 id="gameover-title"><span class="sweep">GAME OVER</span></h1>
+    <div id="final-score">Score: 0</div>
+    <div id="trophy-gallery"></div>
+    <button id="btn-replay">PLAY AGAIN</button>
+  </div>
+</div>
+
+<div id="mega-flash">MEGA GRIN!</div>
+<div id="mine-flash"></div>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+
+// ── State ──
+const COLS = 10, ROWS = 10, MINE_COUNT = 15;
+const TILE = 48, GAP = 3;
+const SMILE_HOLD_TIME = 500; // ms to hold smile before reveal
+const NUM_COLORS = ['#58a6ff','#3fb950','#f85149','#bc8cff','#7a3030','#39d3c0','#c9d1d9','#8b949e'];
+const SHAME_CAPTIONS = [
+  "The face of regret",
+  "Pure hubris",
+  "Should've stopped smiling",
+  "Grinning into the abyss",
+  "This is what overconfidence looks like",
+  "Didn't see that coming, did you",
+  "Smile now, cry later",
+  "A grin too far",
+  "Peak foolishness captured",
+  "Frame this one"
+];
+
+let state = 'loading'; // loading, start, calibrating, countdown, playing, gameover
+let grid = [];
+let revealed = [];
+let flagged = [];
+let lives = 3;
+let score = 0;
+let timerStart = 0;
+let timerElapsed = 0;
+let timerInterval = null;
+let shameTrophies = [];
+let hoverCol = -1, hoverRow = -1;
+let smileIntensity = 0;
+let smoothSmile = 0;
+let smileHoldStart = 0;
+let smileTriggered = false;
+let calNeutral = 0, calMax = 0.6;
+let gameWon = false;
+
+// ── DOM ──
+const app = document.getElementById('app');
+const denied = document.getElementById('denied');
+const overlayStart = document.getElementById('overlay-start');
+const overlayCalibrate = document.getElementById('overlay-calibrate');
+const overlayCountdown = document.getElementById('overlay-countdown');
+const overlayGameover = document.getElementById('overlay-gameover');
+const countdownEl = document.getElementById('countdown');
+const calText = document.getElementById('calibration-text');
+const calProgressInner = document.getElementById('calibration-progress-inner');
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const webcamVideo = document.getElementById('webcam');
+const webcamCal = document.getElementById('webcam-cal');
+const smileMeterInner = document.getElementById('smile-meter-inner');
+const smileLabel = document.getElementById('smile-label');
+const scoreVal = document.getElementById('score-val');
+const livesVal = document.getElementById('lives-val');
+const timerVal = document.getElementById('timer-val');
+const trophyNum = document.getElementById('trophy-num');
+const megaFlash = document.getElementById('mega-flash');
+const mineFlash = document.getElementById('mine-flash');
+const gameoverTitle = document.getElementById('gameover-title');
+const finalScoreEl = document.getElementById('final-score');
+const trophyGallery = document.getElementById('trophy-gallery');
+const btnStart = document.getElementById('btn-start');
+const btnReplay = document.getElementById('btn-replay');
+
+// ── Audio ──
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playPop() {
+  ensureAudio();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(600, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.05);
+  g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.05);
+}
+
+function playSweep() {
+  ensureAudio();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(400, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(1000, audioCtx.currentTime + 0.1);
+  g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.1);
+}
+
+function playExplosion() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  for (let i = 0; i < 5; i++) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(80 + Math.random() * 300, t);
+    o.frequency.exponentialRampToValueAtTime(30, t + 0.2);
+    g.gain.setValueAtTime(0.08, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.2);
+  }
+}
+
+function playClick() {
+  ensureAudio();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(1000, audioCtx.currentTime);
+  g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.03);
+}
+
+function playVictory() {
+  ensureAudio();
+  const notes = [523, 659, 784, 1047, 784, 1047, 1318];
+  const t = audioCtx.currentTime;
+  notes.forEach((freq, i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t + i * 0.12);
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.linearRampToValueAtTime(0.15, t + i * 0.12);
+    g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.15);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t + i * 0.12);
+    o.stop(t + i * 0.12 + 0.15);
+  });
+}
+
+// ── MediaPipe ──
+let faceLandmarker = null;
+let webcamStream = null;
+
+async function initMediaPipe() {
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+  );
+  faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate: "GPU"
+    },
+    outputFaceBlendshapes: true,
+    runningMode: "VIDEO",
+    numFaces: 1
+  });
+}
+
+async function initWebcam() {
+  try {
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' }
+    });
+    webcamVideo.srcObject = webcamStream;
+    webcamCal.srcObject = webcamStream;
+    await webcamVideo.play().catch(() => {});
+    await webcamCal.play().catch(() => {});
+  } catch (e) {
+    denied.classList.remove('hidden');
+    throw new Error('Camera denied');
+  }
+}
+
+function getSmileScore() {
+  if (!faceLandmarker || !webcamVideo.videoWidth) return 0;
+  const now = performance.now();
+  let results;
+  try {
+    results = faceLandmarker.detectForVideo(webcamVideo, now);
+  } catch (e) {
+    return smoothSmile;
+  }
+  if (!results || !results.faceBlendshapes || results.faceBlendshapes.length === 0) return smoothSmile;
+
+  const shapes = results.faceBlendshapes[0].categories;
+  let left = 0, right = 0;
+  for (const s of shapes) {
+    if (s.categoryName === 'mouthSmileLeft') left = s.score;
+    if (s.categoryName === 'mouthSmileRight') right = s.score;
+  }
+  return (left + right) / 2;
+}
+
+// ── Grid Logic ──
+function generateGrid() {
+  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  revealed = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  flagged = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+
+  let placed = 0;
+  while (placed < MINE_COUNT) {
+    const r = Math.floor(Math.random() * ROWS);
+    const c = Math.floor(Math.random() * COLS);
+    if (grid[r][c] !== -1) {
+      grid[r][c] = -1;
+      placed++;
+    }
+  }
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === -1) continue;
+      let count = 0;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && grid[nr][nc] === -1) count++;
+        }
+      }
+      grid[r][c] = count;
+    }
+  }
+}
+
+function revealTile(r, c) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+  if (revealed[r][c] || flagged[r][c]) return false;
+  revealed[r][c] = true;
+
+  if (grid[r][c] === -1) return true; // hit mine
+
+  score += 10;
+
+  // Flood fill for zero tiles
+  if (grid[r][c] === 0) {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        revealTile(r + dr, c + dc);
+      }
+    }
+  }
+  return false;
+}
+
+function revealArea(centerR, centerC, radius) {
+  let hitMine = false;
+  const tiles = [];
+  for (let dr = -radius; dr <= radius; dr++) {
+    for (let dc = -radius; dc <= radius; dc++) {
+      const r = centerR + dr, c = centerC + dc;
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && !revealed[r][c] && !flagged[r][c]) {
+        tiles.push([r, c]);
+      }
+    }
+  }
+  for (const [r, c] of tiles) {
+    if (revealTile(r, c)) hitMine = true;
+  }
+  return hitMine;
+}
+
+function countRevealed() {
+  let count = 0;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (revealed[r][c]) count++;
+  return count;
+}
+
+function checkWin() {
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (grid[r][c] !== -1 && !revealed[r][c]) return false;
+  return true;
+}
+
+// ── Shame Trophies ──
+function captureShame() {
+  const cap = document.createElement('canvas');
+  cap.width = 320;
+  cap.height = 240;
+  const cctx = cap.getContext('2d');
+  cctx.save();
+  cctx.translate(cap.width, 0);
+  cctx.scale(-1, 1);
+  cctx.drawImage(webcamVideo, 0, 0, cap.width, cap.height);
+  cctx.restore();
+  const dataUrl = cap.toDataURL('image/jpeg', 0.85);
+  const caption = SHAME_CAPTIONS[shameTrophies.length % SHAME_CAPTIONS.length];
+  shameTrophies.push({ dataUrl, caption, number: shameTrophies.length + 1 });
+  trophyNum.textContent = shameTrophies.length;
+}
+
+// ── Drawing ──
+function sizeCanvas() {
+  const wrap = document.getElementById('game-canvas-wrap');
+  const maxW = wrap.clientWidth - 40;
+  const maxH = wrap.clientHeight - 40;
+  const gridW = COLS * (TILE + GAP) + GAP;
+  const gridH = ROWS * (TILE + GAP) + GAP;
+  const scale = Math.min(1, maxW / gridW, maxH / gridH);
+  canvas.width = gridW;
+  canvas.height = gridH;
+  canvas.style.width = Math.floor(gridW * scale) + 'px';
+  canvas.style.height = Math.floor(gridH * scale) + 'px';
+}
+
+function drawGrid() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Determine which tiles would be revealed (preview highlight)
+  const previewSet = new Set();
+  if (state === 'playing' && hoverRow >= 0 && hoverCol >= 0) {
+    let radius = 0;
+    const ns = normalizedSmile();
+    if (ns >= 0.3 && ns < 0.5) radius = 0;
+    else if (ns >= 0.5 && ns < 0.7) radius = 1;
+    else if (ns >= 0.7) radius = 2;
+
+    if (ns >= 0.3) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+          const r = hoverRow + dr, c = hoverCol + dc;
+          if (r >= 0 && r < ROWS && c >= 0 && c < COLS && !revealed[r][c]) {
+            previewSet.add(r * COLS + c);
+          }
+        }
+      }
+    }
+  }
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = GAP + c * (TILE + GAP);
+      const y = GAP + r * (TILE + GAP);
+      const isHover = r === hoverRow && c === hoverCol;
+      const isPreview = previewSet.has(r * COLS + c);
+
+      if (revealed[r][c]) {
+        // Revealed tile
+        ctx.fillStyle = '#161b22';
+        ctx.fillRect(x, y, TILE, TILE);
+
+        if (grid[r][c] === -1) {
+          // Mine
+          ctx.fillStyle = '#f85149';
+          ctx.beginPath();
+          ctx.arc(x + TILE / 2, y + TILE / 2, TILE * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          // Spikes
+          ctx.strokeStyle = '#f85149';
+          ctx.lineWidth = 2;
+          for (let a = 0; a < 8; a++) {
+            const angle = (a / 8) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(x + TILE/2 + Math.cos(angle) * TILE * 0.25, y + TILE/2 + Math.sin(angle) * TILE * 0.25);
+            ctx.lineTo(x + TILE/2 + Math.cos(angle) * TILE * 0.42, y + TILE/2 + Math.sin(angle) * TILE * 0.42);
+            ctx.stroke();
+          }
+        } else if (grid[r][c] > 0) {
+          ctx.fillStyle = NUM_COLORS[grid[r][c] - 1];
+          ctx.font = 'bold 22px "Segoe UI", system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(grid[r][c], x + TILE / 2, y + TILE / 2 + 1);
+        }
+      } else {
+        // Unrevealed
+        if (isPreview) {
+          ctx.fillStyle = '#39d35333';
+          ctx.fillRect(x, y, TILE, TILE);
+          ctx.strokeStyle = '#39d353';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+        } else {
+          ctx.fillStyle = isHover ? '#30363d' : '#21262d';
+          ctx.fillRect(x, y, TILE, TILE);
+        }
+
+        if (flagged[r][c]) {
+          ctx.fillStyle = '#f0883e';
+          ctx.font = '22px "Segoe UI", system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('\u2691', x + TILE / 2, y + TILE / 2 + 1);
+        }
+      }
+    }
+  }
+}
+
+// ── Smile normalization with calibration ──
+function normalizedSmile() {
+  if (calMax <= calNeutral) return smoothSmile;
+  const raw = (smoothSmile - calNeutral) / (calMax - calNeutral);
+  return Math.max(0, Math.min(1, raw));
+}
+
+// ── Game Flow ──
+function updateSmileMeter(ns) {
+  const pct = Math.round(ns * 100);
+  smileMeterInner.style.width = pct + '%';
+
+  // Color gradient: yellow -> green -> neon green
+  let color;
+  if (ns < 0.3) color = '#f0c040';
+  else if (ns < 0.5) color = '#a0d040';
+  else if (ns < 0.7) color = '#50d040';
+  else color = '#39d353';
+  smileMeterInner.style.background = color;
+
+  if (ns < 0.3) smileLabel.textContent = '';
+  else if (ns < 0.5) smileLabel.textContent = 'single tile';
+  else if (ns < 0.7) smileLabel.textContent = '3x3 area';
+  else smileLabel.textContent = '5x5 MEGA GRIN';
+}
+
+function startTimer() {
+  timerStart = Date.now();
+  timerInterval = setInterval(() => {
+    timerElapsed = Math.floor((Date.now() - timerStart) / 1000);
+    const m = Math.floor(timerElapsed / 60);
+    const s = timerElapsed % 60;
+    timerVal.textContent = m + ':' + String(s).padStart(2, '0');
+  }, 250);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+}
+
+function showOverlay(id) {
+  [overlayStart, overlayCalibrate, overlayCountdown, overlayGameover].forEach(o => o.classList.add('hidden'));
+  if (id) document.getElementById(id).classList.remove('hidden');
+}
+
+async function doCalibration() {
+  state = 'calibrating';
+  showOverlay('overlay-calibrate');
+
+  // Phase 1: neutral
+  calText.textContent = 'Look at the camera with a neutral face...';
+  let neutralSamples = [];
+  const neutralStart = Date.now();
+  while (Date.now() - neutralStart < 2000) {
+    const s = getSmileScore();
+    neutralSamples.push(s);
+    calProgressInner.style.width = ((Date.now() - neutralStart) / 2000 * 50) + '%';
+    await sleep(50);
+  }
+  calNeutral = neutralSamples.reduce((a, b) => a + b, 0) / neutralSamples.length;
+
+  // Phase 2: big smile
+  calText.textContent = 'Now... give me your BIGGEST GRIN!';
+  let maxSamples = [];
+  const maxStart = Date.now();
+  while (Date.now() - maxStart < 2500) {
+    const s = getSmileScore();
+    maxSamples.push(s);
+    calProgressInner.style.width = (50 + (Date.now() - maxStart) / 2500 * 50) + '%';
+    await sleep(50);
+  }
+  calMax = Math.max(...maxSamples, calNeutral + 0.1);
+
+  calText.textContent = 'Calibrated! Get ready...';
+  await sleep(600);
+}
+
+async function doCountdown() {
+  state = 'countdown';
+  showOverlay('overlay-countdown');
+  for (let i = 3; i >= 1; i--) {
+    countdownEl.textContent = i;
+    countdownEl.style.transform = 'scale(1.3)';
+    countdownEl.style.transition = 'transform 0.3s';
+    await sleep(100);
+    countdownEl.style.transform = 'scale(1)';
+    await sleep(900);
+  }
+}
+
+async function handleMineHit() {
+  playExplosion();
+
+  // Flash red
+  mineFlash.style.opacity = '1';
+  setTimeout(() => { mineFlash.style.opacity = '0'; }, 300);
+
+  // Capture shame trophy
+  captureShame();
+
+  lives--;
+  livesVal.textContent = lives;
+
+  if (lives <= 0) {
+    gameWon = false;
+    endGame();
+  } else {
+    // Pause briefly
+    state = 'paused';
+    await sleep(800);
+    state = 'playing';
+  }
+}
+
+function endGame() {
+  state = 'gameover';
+  stopTimer();
+
+  if (gameWon) {
+    gameoverTitle.innerHTML = '<span class="grin">YOU WIN!</span>';
+    playVictory();
+  } else {
+    gameoverTitle.innerHTML = '<span class="sweep">GAME OVER</span>';
+  }
+
+  // Calculate score with time bonus
+  const timeBonus = Math.max(1, 300 - timerElapsed);
+  const finalScore = score + (gameWon ? timeBonus * 5 : 0);
+  finalScoreEl.textContent = `Score: ${finalScore}` + (gameWon ? ` (includes ${timeBonus * 5} speed bonus)` : '');
+
+  // Build trophy gallery
+  trophyGallery.innerHTML = '';
+  if (shameTrophies.length === 0) {
+    trophyGallery.innerHTML = '<p style="color:#8b949e;">No shame trophies this round. Suspicious.</p>';
+  } else {
+    for (const t of shameTrophies) {
+      const card = document.createElement('div');
+      card.className = 'trophy-card';
+      card.innerHTML = `
+        <img src="${t.dataUrl}" alt="Shame Trophy #${t.number}">
+        <div class="caption">SHAME TROPHY #${t.number}<br>${t.caption}</div>
+      `;
+      trophyGallery.appendChild(card);
+    }
+  }
+
+  showOverlay('overlay-gameover');
+}
+
+function resetGame() {
+  generateGrid();
+  lives = 3;
+  score = 0;
+  timerElapsed = 0;
+  shameTrophies = [];
+  gameWon = false;
+  smileHoldStart = 0;
+  smileTriggered = false;
+  scoreVal.textContent = '0';
+  livesVal.textContent = '3';
+  timerVal.textContent = '0:00';
+  trophyNum.textContent = '0';
+  smileLabel.textContent = '';
+  smileMeterInner.style.width = '0%';
+}
+
+// ── Input ──
+function getGridCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const c = Math.floor((mx - GAP) / (TILE + GAP));
+  const r = Math.floor((my - GAP) / (TILE + GAP));
+  // Check if actually inside a tile (not in the gap)
+  const tileX = GAP + c * (TILE + GAP);
+  const tileY = GAP + r * (TILE + GAP);
+  if (mx >= tileX && mx <= tileX + TILE && my >= tileY && my <= tileY + TILE &&
+      c >= 0 && c < COLS && r >= 0 && r < ROWS) {
+    return { r, c };
+  }
+  return { r: -1, c: -1 };
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const { r, c } = getGridCoords(e);
+  hoverRow = r;
+  hoverCol = c;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoverRow = -1;
+  hoverCol = -1;
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (state !== 'playing') return;
+  const { r, c } = getGridCoords(e);
+  if (r < 0 || c < 0 || revealed[r][c]) return;
+  flagged[r][c] = !flagged[r][c];
+  playClick();
+  drawGrid();
+});
+
+// ── Main Loop ──
+let lastFrameTime = 0;
+let megaFlashTimeout = null;
+
+function gameLoop(timestamp) {
+  requestAnimationFrame(gameLoop);
+
+  if (state !== 'playing') {
+    // Still read smile for calibration/display
+    if (state === 'calibrating') return;
+    drawGrid();
+    return;
+  }
+
+  // Get smile
+  const rawSmile = getSmileScore();
+  smoothSmile += (rawSmile - smoothSmile) * 0.3;
+  const ns = normalizedSmile();
+  smileIntensity = ns;
+  updateSmileMeter(ns);
+
+  // Smile hold logic
+  if (ns >= 0.3 && hoverRow >= 0 && hoverCol >= 0) {
+    if (smileHoldStart === 0) {
+      smileHoldStart = Date.now();
+      smileTriggered = false;
+    }
+
+    if (!smileTriggered && Date.now() - smileHoldStart >= SMILE_HOLD_TIME) {
+      smileTriggered = true;
+
+      // Determine radius
+      let radius = 0;
+      if (ns >= 0.7) radius = 2;
+      else if (ns >= 0.5) radius = 1;
+      else radius = 0;
+
+      // Play sound
+      if (radius >= 2) {
+        playSweep();
+        megaFlash.style.opacity = '1';
+        clearTimeout(megaFlashTimeout);
+        megaFlashTimeout = setTimeout(() => { megaFlash.style.opacity = '0'; }, 600);
+      } else if (radius >= 1) {
+        playSweep();
+      } else {
+        playPop();
+      }
+
+      // Reveal
+      const hitMine = revealArea(hoverRow, hoverCol, radius);
+      scoreVal.textContent = score;
+
+      if (hitMine) {
+        handleMineHit();
+      } else if (checkWin()) {
+        gameWon = true;
+        endGame();
+      }
+    }
+  } else {
+    smileHoldStart = 0;
+    smileTriggered = false;
+  }
+
+  drawGrid();
+}
+
+// ── Init ──
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function startGame() {
+  ensureAudio();
+  resetGame();
+  sizeCanvas();
+  drawGrid();
+
+  await doCalibration();
+  await doCountdown();
+
+  showOverlay(null);
+  app.classList.remove('hidden');
+  state = 'playing';
+  startTimer();
+  drawGrid();
+}
+
+async function init() {
+  try {
+    await initWebcam();
+  } catch (e) {
+    return;
+  }
+
+  sizeCanvas();
+
+  try {
+    await initMediaPipe();
+  } catch (e) {
+    console.error('MediaPipe init failed:', e);
+    denied.classList.remove('hidden');
+    denied.querySelector('h2').textContent = 'MediaPipe Failed to Load';
+    denied.querySelector('p').textContent = 'Could not load face detection model. Check your internet connection and try again.';
+    return;
+  }
+
+  // Show start screen
+  app.classList.remove('hidden');
+  state = 'start';
+  showOverlay('overlay-start');
+
+  requestAnimationFrame(gameLoop);
+}
+
+btnStart.addEventListener('click', () => startGame());
+btnReplay.addEventListener('click', () => startGame());
+window.addEventListener('resize', () => { if (state === 'playing') sizeCanvas(); });
+
+init();
+</script>
+</body>
+</html>
