@@ -335,6 +335,93 @@ body {
 #denied.hidden { display: none; }
 #denied h2 { color: #f85149; margin-bottom: 12px; }
 #denied p { color: #8b949e; max-width: 400px; text-align: center; line-height: 1.6; }
+
+/* Victory trophy */
+.trophy-card.victory { border-color: #39d353; }
+.trophy-card.victory .caption { color: #39d353; }
+
+/* Difficulty selector */
+.difficulty-selector {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.difficulty-selector button {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #21262d;
+  color: #c9d1d9;
+  border: 2px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 0;
+}
+.difficulty-selector button:hover { border-color: #58a6ff; }
+.difficulty-selector button.selected {
+  border-color: #58a6ff;
+  background: #1f3a5f;
+  color: #58a6ff;
+}
+
+/* Difficulty badge */
+.diff-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.diff-badge.normal { background: #238636; color: #fff; }
+.diff-badge.hard { background: #9e6a03; color: #fff; }
+.diff-badge.expert { background: #f85149; color: #fff; }
+
+/* High score */
+#high-score-display {
+  font-size: 14px;
+  color: #58a6ff;
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+/* New record */
+#new-record {
+  font-size: 28px;
+  font-weight: 900;
+  color: #39d353;
+  text-shadow: 0 0 20px #39d353;
+  margin: 8px 0;
+}
+
+/* Recalibrate button */
+#btn-recalibrate {
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+}
+#btn-recalibrate:hover { background: #30363d; color: #c9d1d9; }
+
+/* Screen shake */
+@keyframes canvas-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-4px, 2px); }
+  20% { transform: translate(4px, -2px); }
+  30% { transform: translate(-2px, 4px); }
+  40% { transform: translate(2px, -4px); }
+  50% { transform: translate(-4px, 0); }
+  60% { transform: translate(4px, 2px); }
+  70% { transform: translate(-2px, -2px); }
+  80% { transform: translate(2px, 4px); }
+  90% { transform: translate(-4px, -2px); }
+}
+#game-canvas-wrap.shaking { animation: canvas-shake 0.3s ease-out; }
 </style>
 </head>
 <body>
@@ -349,6 +436,7 @@ body {
     <div class="stat">SCORE: <span id="score-val">0</span></div>
     <div class="stat lives">LIVES: <span id="lives-val">3</span></div>
     <div class="stat">TIME: <span id="timer-val">0:00</span></div>
+    <div class="stat" id="diff-badge-wrap" style="display:none;"><span id="diff-badge" class="diff-badge normal">NORMAL</span></div>
   </div>
 
   <div id="main-area">
@@ -370,6 +458,8 @@ body {
         <div id="smile-label"></div>
       </div>
 
+      <button id="btn-recalibrate">&#x1f504; Recalibrate</button>
+
       <div id="trophy-count">
         Shame Trophies: <span id="trophy-num">0</span>
       </div>
@@ -388,6 +478,12 @@ body {
     <li>Hit a mine? We screenshot your face. No mercy.</li>
     <li>3 lives. Clear the board to win.</li>
   </ul>
+  <div class="difficulty-selector">
+    <button class="diff-btn selected" data-diff="normal">Normal</button>
+    <button class="diff-btn" data-diff="hard">Hard</button>
+    <button class="diff-btn" data-diff="expert">Expert</button>
+  </div>
+  <div id="high-score-display"></div>
   <button id="btn-start">START GAME</button>
 </div>
 
@@ -406,6 +502,7 @@ body {
 <div id="overlay-gameover" class="overlay hidden">
   <div id="gameover-content">
     <h1 id="gameover-title"><span class="sweep">GAME OVER</span></h1>
+    <div id="new-record" style="display:none;">NEW RECORD!</div>
     <div id="final-score">Score: 0</div>
     <div id="trophy-gallery"></div>
     <button id="btn-replay">PLAY AGAIN</button>
@@ -419,7 +516,7 @@ body {
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
 
 // ── State ──
-const COLS = 10, ROWS = 10, MINE_COUNT = 15;
+let COLS = 10, ROWS = 10, MINE_COUNT = 15;
 const TILE = 48, GAP = 3;
 const SMILE_HOLD_TIME = 500; // ms to hold smile before reveal
 const NUM_COLORS = ['#58a6ff','#3fb950','#f85149','#bc8cff','#7a3030','#39d3c0','#c9d1d9','#8b949e'];
@@ -435,7 +532,20 @@ const SHAME_CAPTIONS = [
   "Peak foolishness captured",
   "Frame this one"
 ];
+const VICTORY_CAPTIONS = [
+  "The face of triumph",
+  "Ice cold calculator",
+  "Smiled through the danger",
+  "Zero mines, all grin",
+  "Minesweeper? More like mine-dodger"
+];
+const DIFFICULTY = {
+  normal: { cols: 10, rows: 10, mines: 15 },
+  hard:   { cols: 10, rows: 10, mines: 25 },
+  expert: { cols: 12, rows: 12, mines: 40 }
+};
 
+let selectedDifficulty = 'normal';
 let state = 'loading'; // loading, start, calibrating, countdown, playing, gameover
 let grid = [];
 let revealed = [];
@@ -446,6 +556,7 @@ let timerStart = 0;
 let timerElapsed = 0;
 let timerInterval = null;
 let shameTrophies = [];
+let victoryTrophy = null;
 let hoverCol = -1, hoverRow = -1;
 let smileIntensity = 0;
 let smoothSmile = 0;
@@ -453,6 +564,10 @@ let smileHoldStart = 0;
 let smileTriggered = false;
 let calNeutral = 0, calMax = 0.6;
 let gameWon = false;
+let smileBuffer = [];
+let ambientOsc = null, ambientGainNode = null;
+let heartbeatActive = false, heartbeatTimeout = null;
+let tensionStarted = false;
 
 // ── DOM ──
 const app = document.getElementById('app');
@@ -481,6 +596,12 @@ const finalScoreEl = document.getElementById('final-score');
 const trophyGallery = document.getElementById('trophy-gallery');
 const btnStart = document.getElementById('btn-start');
 const btnReplay = document.getElementById('btn-replay');
+const diffBadge = document.getElementById('diff-badge');
+const diffBadgeWrap = document.getElementById('diff-badge-wrap');
+const highScoreDisplay = document.getElementById('high-score-display');
+const newRecordEl = document.getElementById('new-record');
+const btnRecalibrate = document.getElementById('btn-recalibrate');
+const gameCanvasWrap = document.getElementById('game-canvas-wrap');
 
 // ── Audio ──
 let audioCtx = null;
@@ -561,6 +682,76 @@ function playVictory() {
   });
 }
 
+// ── Ambient Drone ──
+function startAmbientDrone() {
+  ensureAudio();
+  ambientOsc = audioCtx.createOscillator();
+  ambientGainNode = audioCtx.createGain();
+  ambientOsc.type = 'sine';
+  ambientOsc.frequency.value = 55;
+  ambientGainNode.gain.value = 0.02;
+  ambientOsc.connect(ambientGainNode).connect(audioCtx.destination);
+  ambientOsc.start();
+}
+
+function stopAmbientDrone() {
+  if (ambientOsc) {
+    try { ambientOsc.stop(); } catch(e) {}
+    ambientOsc = null;
+    ambientGainNode = null;
+  }
+}
+
+function updateAmbientGain() {
+  if (!ambientGainNode) return;
+  const total = ROWS * COLS;
+  const ratio = countRevealed() / total;
+  ambientGainNode.gain.value = 0.02 + ratio * 0.03;
+}
+
+// ── Heartbeat (last-10-tiles tension) ──
+function playHeartbeatPulse() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = 80;
+  g.gain.setValueAtTime(0.08, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t);
+  o.stop(t + 0.15);
+}
+
+function startHeartbeat() {
+  heartbeatActive = true;
+  function pulse() {
+    if (!heartbeatActive || state !== 'playing') return;
+    playHeartbeatPulse();
+    const rem = countRemainingSafe();
+    let interval;
+    if (rem <= 3) interval = 300;
+    else if (rem <= 5) interval = 500;
+    else interval = 800;
+    heartbeatTimeout = setTimeout(pulse, interval);
+  }
+  pulse();
+}
+
+function stopHeartbeat() {
+  heartbeatActive = false;
+  if (heartbeatTimeout) { clearTimeout(heartbeatTimeout); heartbeatTimeout = null; }
+}
+
+// ── Screen Shake ──
+function shakeCanvas() {
+  gameCanvasWrap.classList.remove('shaking');
+  void gameCanvasWrap.offsetWidth; // reflow to restart animation
+  gameCanvasWrap.classList.add('shaking');
+  setTimeout(() => gameCanvasWrap.classList.remove('shaking'), 300);
+}
+
 // ── MediaPipe ──
 let faceLandmarker = null;
 let webcamStream = null;
@@ -612,7 +803,10 @@ function getSmileScore() {
     if (s.categoryName === 'mouthSmileLeft') left = s.score;
     if (s.categoryName === 'mouthSmileRight') right = s.score;
   }
-  return (left + right) / 2;
+  const raw = (left + right) / 2;
+  smileBuffer.push(raw);
+  if (smileBuffer.length > 4) smileBuffer.shift();
+  return smileBuffer.reduce((a, b) => a + b, 0) / smileBuffer.length;
 }
 
 // ── Grid Logic ──
@@ -699,8 +893,16 @@ function checkWin() {
   return true;
 }
 
-// ── Shame Trophies ──
-function captureShame() {
+function countRemainingSafe() {
+  let count = 0;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (grid[r][c] !== -1 && !revealed[r][c]) count++;
+  return count;
+}
+
+// ── Screenshots ──
+function captureScreenshot() {
   const cap = document.createElement('canvas');
   cap.width = 320;
   cap.height = 240;
@@ -710,10 +912,20 @@ function captureShame() {
   cctx.scale(-1, 1);
   cctx.drawImage(webcamVideo, 0, 0, cap.width, cap.height);
   cctx.restore();
-  const dataUrl = cap.toDataURL('image/jpeg', 0.85);
+  return cap.toDataURL('image/jpeg', 0.85);
+}
+
+function captureShame() {
+  const dataUrl = captureScreenshot();
   const caption = SHAME_CAPTIONS[shameTrophies.length % SHAME_CAPTIONS.length];
   shameTrophies.push({ dataUrl, caption, number: shameTrophies.length + 1 });
   trophyNum.textContent = shameTrophies.length;
+}
+
+function captureVictoryTrophy() {
+  const dataUrl = captureScreenshot();
+  const caption = VICTORY_CAPTIONS[Math.floor(Math.random() * VICTORY_CAPTIONS.length)];
+  victoryTrophy = { dataUrl, caption };
 }
 
 // ── Drawing ──
@@ -732,6 +944,10 @@ function sizeCanvas() {
 
 function drawGrid() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Calculate remaining safe tiles for tension effect
+  const remainingSafe = state === 'playing' ? countRemainingSafe() : 999;
+  const pulseAlpha = remainingSafe <= 10 ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(Date.now() / 200)) : 0;
 
   // Determine which tiles would be revealed (preview highlight)
   const previewSet = new Set();
@@ -808,6 +1024,13 @@ function drawGrid() {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('\u2691', x + TILE / 2, y + TILE / 2 + 1);
+        }
+
+        // Pulsing border for last-10-tiles tension
+        if (remainingSafe <= 10 && !flagged[r][c] && grid[r][c] !== -1) {
+          ctx.strokeStyle = `rgba(88, 166, 255, ${pulseAlpha})`;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
         }
       }
     }
@@ -907,9 +1130,10 @@ async function doCountdown() {
 async function handleMineHit() {
   playExplosion();
 
-  // Flash red
+  // Flash red + screen shake
   mineFlash.style.opacity = '1';
   setTimeout(() => { mineFlash.style.opacity = '0'; }, 300);
+  shakeCanvas();
 
   // Capture shame trophy
   captureShame();
@@ -931,13 +1155,29 @@ async function handleMineHit() {
 function endGame() {
   state = 'gameover';
   stopTimer();
+  stopAmbientDrone();
+  stopHeartbeat();
+
+  let isNewRecord = false;
 
   if (gameWon) {
     gameoverTitle.innerHTML = '<span class="grin">YOU WIN!</span>';
     playVictory();
+    captureVictoryTrophy();
+
+    // High score check
+    const hsKey = 'grinSweeper_highScore_' + selectedDifficulty;
+    const prevBest = localStorage.getItem(hsKey);
+    if (!prevBest || timerElapsed < parseInt(prevBest, 10)) {
+      localStorage.setItem(hsKey, timerElapsed);
+      isNewRecord = true;
+    }
   } else {
     gameoverTitle.innerHTML = '<span class="sweep">GAME OVER</span>';
   }
+
+  // Show/hide new record
+  newRecordEl.style.display = isNewRecord ? 'block' : 'none';
 
   // Calculate score with time bonus
   const timeBonus = Math.max(1, 300 - timerElapsed);
@@ -946,7 +1186,19 @@ function endGame() {
 
   // Build trophy gallery
   trophyGallery.innerHTML = '';
-  if (shameTrophies.length === 0) {
+
+  // Victory trophy first if won
+  if (gameWon && victoryTrophy) {
+    const card = document.createElement('div');
+    card.className = 'trophy-card victory';
+    card.innerHTML = `
+      <img src="${victoryTrophy.dataUrl}" alt="Victory Trophy">
+      <div class="caption">VICTORY TROPHY<br>${victoryTrophy.caption}</div>
+    `;
+    trophyGallery.appendChild(card);
+  }
+
+  if (shameTrophies.length === 0 && !gameWon) {
     trophyGallery.innerHTML = '<p style="color:#8b949e;">No shame trophies this round. Suspicious.</p>';
   } else {
     for (const t of shameTrophies) {
@@ -964,20 +1216,34 @@ function endGame() {
 }
 
 function resetGame() {
+  // Apply difficulty settings
+  const diff = DIFFICULTY[selectedDifficulty];
+  COLS = diff.cols;
+  ROWS = diff.rows;
+  MINE_COUNT = diff.mines;
+
   generateGrid();
   lives = 3;
   score = 0;
   timerElapsed = 0;
   shameTrophies = [];
+  victoryTrophy = null;
   gameWon = false;
   smileHoldStart = 0;
   smileTriggered = false;
+  smileBuffer = [];
+  tensionStarted = false;
   scoreVal.textContent = '0';
   livesVal.textContent = '3';
   timerVal.textContent = '0:00';
   trophyNum.textContent = '0';
   smileLabel.textContent = '';
   smileMeterInner.style.width = '0%';
+
+  // Update difficulty badge
+  diffBadge.textContent = selectedDifficulty.toUpperCase();
+  diffBadge.className = 'diff-badge ' + selectedDifficulty;
+  diffBadgeWrap.style.display = '';
 }
 
 // ── Input ──
@@ -1085,6 +1351,16 @@ function gameLoop(timestamp) {
     smileTriggered = false;
   }
 
+  // Update ambient drone gain based on progress
+  updateAmbientGain();
+
+  // Last-10-tiles tension heartbeat
+  const remaining = countRemainingSafe();
+  if (remaining <= 10 && remaining > 0 && !tensionStarted) {
+    tensionStarted = true;
+    startHeartbeat();
+  }
+
   drawGrid();
 }
 
@@ -1104,6 +1380,7 @@ async function startGame() {
   app.classList.remove('hidden');
   state = 'playing';
   startTimer();
+  startAmbientDrone();
   drawGrid();
 }
 
@@ -1130,12 +1407,45 @@ async function init() {
   app.classList.remove('hidden');
   state = 'start';
   showOverlay('overlay-start');
+  updateHighScoreDisplay();
 
   requestAnimationFrame(gameLoop);
 }
 
+// ── High Score Display ──
+function updateHighScoreDisplay() {
+  const hsKey = 'grinSweeper_highScore_' + selectedDifficulty;
+  const best = localStorage.getItem(hsKey);
+  if (best) {
+    highScoreDisplay.textContent = `FASTEST CLEAR (${selectedDifficulty}): ${best}s`;
+  } else {
+    highScoreDisplay.textContent = '';
+  }
+}
+
+// ── Recalibrate ──
+async function recalibrate() {
+  if (state !== 'playing') return;
+  state = 'paused';
+  showOverlay('overlay-calibrate');
+  await doCalibration();
+  showOverlay(null);
+  state = 'playing';
+}
+
+// ── Difficulty Selector ──
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedDifficulty = btn.dataset.diff;
+    updateHighScoreDisplay();
+  });
+});
+
 btnStart.addEventListener('click', () => startGame());
 btnReplay.addEventListener('click', () => startGame());
+btnRecalibrate.addEventListener('click', () => recalibrate());
 window.addEventListener('resize', () => { if (state === 'playing') sizeCanvas(); });
 
 init();
