@@ -408,6 +408,145 @@ body {
 }
 #btn-recalibrate:hover { background: #30363d; color: #c9d1d9; }
 
+/* Username input */
+.username-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+.username-input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 14px;
+  padding: 8px 12px;
+  width: 200px;
+  outline: none;
+}
+.username-input:focus { border-color: #58a6ff; }
+.username-input::placeholder { color: #484f58; }
+.avatar-preview {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #30363d;
+  background: #21262d;
+  object-fit: cover;
+}
+.avatar-preview.hidden { display: none; }
+.avatar-fallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #30363d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #8b949e;
+}
+
+/* Leaderboard */
+.leaderboard-wrap {
+  margin-top: 16px;
+  width: 100%;
+  max-width: 520px;
+  background: rgba(26, 26, 46, 0.9);
+  border: 1px solid #9e6a03;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.leaderboard-wrap h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f0c040;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.leaderboard-table th {
+  color: #8b949e;
+  font-weight: 600;
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid #30363d;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.leaderboard-table td {
+  padding: 5px 6px;
+  color: #c9d1d9;
+  border-bottom: 1px solid #21262d;
+  vertical-align: middle;
+}
+.leaderboard-table tr.highlight td {
+  background: rgba(240, 192, 64, 0.12);
+}
+.leaderboard-table .rank { width: 30px; text-align: center; font-weight: 700; }
+.leaderboard-table .avatar-cell { width: 32px; }
+.leaderboard-table .avatar-cell img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: #21262d;
+}
+.leaderboard-table .avatar-cell .avatar-sm-fallback {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #30363d;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b949e;
+  vertical-align: middle;
+}
+.leaderboard-empty {
+  text-align: center;
+  color: #484f58;
+  padding: 12px;
+  font-size: 13px;
+}
+
+/* Save score */
+.save-score-section {
+  margin-top: 12px;
+  text-align: center;
+}
+.save-score-section button {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #9e6a03;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 0;
+}
+.save-score-section button:hover { background: #bb8009; }
+.save-score-section button:disabled {
+  background: #21262d;
+  color: #484f58;
+  cursor: default;
+}
+.save-score-muted {
+  color: #484f58;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
 /* Screen shake */
 @keyframes canvas-shake {
   0%, 100% { transform: translate(0, 0); }
@@ -483,7 +622,13 @@ body {
     <button class="diff-btn" data-diff="hard">Hard</button>
     <button class="diff-btn" data-diff="expert">Expert</button>
   </div>
+  <div class="username-section">
+    <input type="text" id="username-input" class="username-input" placeholder="Your GitHub username" maxlength="39" autocomplete="off" spellcheck="false">
+    <img id="avatar-preview" class="avatar-preview hidden" alt="avatar">
+    <div id="avatar-fallback" class="avatar-fallback" style="display:none;"></div>
+  </div>
   <div id="high-score-display"></div>
+  <div id="title-leaderboard"></div>
   <button id="btn-start">START GAME</button>
 </div>
 
@@ -505,6 +650,8 @@ body {
     <div id="new-record" style="display:none;">NEW RECORD!</div>
     <div id="final-score">Score: 0</div>
     <div id="trophy-gallery"></div>
+    <div id="gameover-save-section" class="save-score-section" style="display:none;"></div>
+    <div id="gameover-leaderboard"></div>
     <button id="btn-replay">PLAY AGAIN</button>
   </div>
 </div>
@@ -1213,6 +1360,9 @@ function endGame() {
   }
 
   showOverlay('overlay-gameover');
+  currentEntryId = null;
+  showSaveSection();
+  showGameoverLeaderboard();
 }
 
 function resetGame() {
@@ -1408,8 +1558,197 @@ async function init() {
   state = 'start';
   showOverlay('overlay-start');
   updateHighScoreDisplay();
+  setupUsernameInput();
+  refreshTitleLeaderboard();
 
   requestAnimationFrame(gameLoop);
+}
+
+// ── Leaderboard ──
+const LB_KEY = 'grinSweeper_leaderboard';
+const USERNAME_KEY = 'github_username';
+
+function getLeaderboard() {
+  try {
+    return JSON.parse(localStorage.getItem(LB_KEY)) || [];
+  } catch { return []; }
+}
+
+function saveLeaderboard(lb) {
+  localStorage.setItem(LB_KEY, JSON.stringify(lb));
+}
+
+function qualifiesForLeaderboard(time) {
+  const lb = getLeaderboard();
+  if (lb.length < 10) return true;
+  return time < lb[lb.length - 1].time;
+}
+
+function addToLeaderboard(entry) {
+  const lb = getLeaderboard();
+  lb.push(entry);
+  lb.sort((a, b) => a.time - b.time);
+  if (lb.length > 10) lb.length = 10;
+  saveLeaderboard(lb);
+}
+
+function formatLBDate(iso) {
+  const d = new Date(iso);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getMonth()] + ' ' + d.getDate();
+}
+
+function avatarFallbackHandler(img, username) {
+  img.onerror = () => {
+    const fb = document.createElement('span');
+    fb.className = 'avatar-sm-fallback';
+    fb.textContent = (username || '?')[0].toUpperCase();
+    img.replaceWith(fb);
+  };
+}
+
+function renderLeaderboardTable(container, maxEntries, highlightId) {
+  const lb = getLeaderboard().slice(0, maxEntries);
+  if (lb.length === 0) {
+    container.innerHTML = '<div class="leaderboard-wrap"><h3>\u{1F3C6} LEADERBOARD</h3><div class="leaderboard-empty">No scores yet. Win a game to get on the board.</div></div>';
+    return;
+  }
+
+  const diffBadgeHTML = (diff) => {
+    const d = diff || 'normal';
+    return `<span class="diff-badge ${d}" style="font-size:10px;padding:1px 6px;">${d.toUpperCase()}</span>`;
+  };
+
+  let rows = '';
+  lb.forEach((e, i) => {
+    const hl = e.id === highlightId ? ' highlight' : '';
+    const name = e.username || 'Anonymous';
+    let avatarHTML;
+    if (e.username) {
+      avatarHTML = `<img src="https://github.com/${e.username}.png?size=48" alt="${e.username}" data-username="${e.username}">`;
+    } else {
+      avatarHTML = `<span class="avatar-sm-fallback">?</span>`;
+    }
+    rows += `<tr class="${hl}">
+      <td class="rank">${i + 1}</td>
+      <td class="avatar-cell">${avatarHTML}</td>
+      <td>${name}</td>
+      <td>${e.time.toFixed(1)}s</td>
+      <td>${diffBadgeHTML(e.difficulty)}</td>
+      <td>${formatLBDate(e.date)}</td>
+    </tr>`;
+  });
+
+  container.innerHTML = `<div class="leaderboard-wrap">
+    <h3>\u{1F3C6} LEADERBOARD</h3>
+    <table class="leaderboard-table">
+      <thead><tr><th class="rank">#</th><th></th><th>Player</th><th>Time</th><th>Diff</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+
+  container.querySelectorAll('.avatar-cell img').forEach(img => {
+    avatarFallbackHandler(img, img.dataset.username);
+  });
+}
+
+function getStoredUsername() {
+  return localStorage.getItem(USERNAME_KEY) || '';
+}
+
+function setStoredUsername(u) {
+  localStorage.setItem(USERNAME_KEY, u);
+}
+
+// ── Username avatar preview ──
+let avatarDebounce = null;
+function setupUsernameInput() {
+  const input = document.getElementById('username-input');
+  const preview = document.getElementById('avatar-preview');
+  const fallback = document.getElementById('avatar-fallback');
+
+  const stored = getStoredUsername();
+  if (stored) {
+    input.value = stored;
+    showAvatarPreview(stored);
+  }
+
+  input.addEventListener('input', () => {
+    const val = input.value.trim();
+    setStoredUsername(val);
+    clearTimeout(avatarDebounce);
+    if (!val) {
+      preview.classList.add('hidden');
+      fallback.style.display = 'none';
+      return;
+    }
+    avatarDebounce = setTimeout(() => showAvatarPreview(val), 400);
+  });
+}
+
+function showAvatarPreview(username) {
+  const preview = document.getElementById('avatar-preview');
+  const fallback = document.getElementById('avatar-fallback');
+  preview.onload = () => {
+    preview.classList.remove('hidden');
+    fallback.style.display = 'none';
+  };
+  preview.onerror = () => {
+    preview.classList.add('hidden');
+    fallback.textContent = username[0].toUpperCase();
+    fallback.style.display = 'flex';
+  };
+  preview.src = `https://github.com/${username}.png?size=40`;
+}
+
+function refreshTitleLeaderboard() {
+  const container = document.getElementById('title-leaderboard');
+  renderLeaderboardTable(container, 5, null);
+}
+
+let currentEntryId = null;
+
+function showGameoverLeaderboard() {
+  const container = document.getElementById('gameover-leaderboard');
+  renderLeaderboardTable(container, 10, currentEntryId);
+}
+
+function showSaveSection() {
+  const section = document.getElementById('gameover-save-section');
+  const username = getStoredUsername();
+  const elapsed = (Date.now() - timerStart) / 1000;
+
+  if (!gameWon) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  const qualifies = qualifiesForLeaderboard(elapsed);
+
+  if (!username) {
+    section.innerHTML = '<div class="save-score-muted">Enter a GitHub username on the title screen to save scores</div>';
+  } else if (!qualifies) {
+    section.innerHTML = '<div class="save-score-muted">Time didn\'t make the top 10</div>';
+  } else {
+    section.innerHTML = '<button id="btn-save-score">Save to Leaderboard</button>';
+    document.getElementById('btn-save-score').addEventListener('click', () => {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      addToLeaderboard({
+        username,
+        time: elapsed,
+        difficulty: selectedDifficulty,
+        date: new Date().toISOString(),
+        id
+      });
+      currentEntryId = id;
+      const btn = document.getElementById('btn-save-score');
+      btn.textContent = '\u2713 Saved!';
+      btn.disabled = true;
+      showGameoverLeaderboard();
+      refreshTitleLeaderboard();
+    });
+  }
 }
 
 // ── High Score Display ──
